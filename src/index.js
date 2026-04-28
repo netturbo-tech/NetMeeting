@@ -1,0 +1,170 @@
+/**
+ * index.js - Script principal do NetMeet Bot
+ * Processa reuniões recentes: busca transcrição → gera resumo → envia email
+ */
+const { config, validateConfig } = require('./config');
+const { createLogger } = require('./logger');
+const {
+  listUsers,
+  findUserByEmail,
+  getRecentlyEndedMeetings,
+  getMeetingTranscriptForEvent,
+} = require('./graph');
+const { sendMeetingSummary } = require('./email');
+const { generateSummary } = require('./summarizer');
+const { wasMeetingProcessed, markMeetingProcessed, wasMeetingOptedIn } = require('./store');
+
+const log = createLogger(config.logLevel);
+
+function normalizeEmailList(targetEmails) {
+  return [...new Set(
+    targetEmails
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
+async function getUsersToProcess(targetEmails) {
+  let emails = normalizeEmailList(targetEmails);
+
+  if (emails.length === 0 && config.pilotUsers.length > 0) {
+    emails = normalizeEmailList(config.pilotUsers);
+    log.info(`Modo PILOTO ativado pelo .env: ${emails.length} usuario(s) configurado(s)`);
+  }
+
+  if (emails.length > 0) {
+    const users = [];
+
+    for (const email of emails) {
+      const user = await findUserByEmail(email);
+      if (!user) {
+        log.error(`Usuario nao encontrado: ${email}`);
+        continue;
+        continue;
+      }
+      users.push(user);
+    }
+
+    return users;
+  }
+
+  log.warn('Modo TODOS OS USUARIOS ativado porque nenhum email foi informado.');
+  log.warn('Para evitar isso, configure PILOT_USERS no .env.');
+  log.warn('Para teste controlado, rode: node src/index.js nome@empresa.com pessoa2@empresa.com');
+  return listUsers();
+}
+
+function isMeetingOrganizer(user, meeting) {
+  const organizerEmail = meeting.organizer?.emailAddress?.address?.toLowerCase();
+  return Boolean(user.mail && organizerEmail && organizerEmail === user.mail.toLowerCase());
+}
+
+async function processMeetings(targetEmails) {
+  console.log('\n' + '='.repeat(60));
+  console.log('  🤖 NetMeet Bot - Processador de Reuniões');
+  console.log('  ⏰ ' + new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
+  console.log('='.repeat(60) + '\n');
+
+  // Validar configuração
+  const errors = validateConfig();
+  if (errors.length > 0) {
+    console.log('❌ ERROS DE CONFIGURAÇÃO:');
+    errors.forEach((e) => console.log(`   → ${e}`));
+    console.log('\n📝 Edite o arquivo .env com suas credenciais e tente novamente.');
+    process.exit(1);
+  }
+
+  log.success('Configuração validada!');
+
+  // 1. Definir usuarios do processamento
+  const users = await getUsersToProcess(targetEmails);
+  if (users.length === 0) {
+    log.warn('Nenhum usuario para processar. Verifique email informado ou permissoes do app no Entra ID.');
+    return;
+  }
+  log.info(`${users.length} usuario(s) na fila de processamento`);
+
+  // 2. Para cada usuário, buscar reuniões recentes
+  let totalProcessed = 0;
+
+  for (const user of users) {
+    if (!user.mail) continue;
+
+    log.info(`\n📅 Verificando: ${user.displayName} (${user.mail})`);
+
+    const meetings = await getRecentlyEndedMeetings(user.id, 3);
+    log.info(`  📊 ${meetings.length} reuniões Teams recentes`);
+
+    for (const meeting of meetings) {
+      log.info(`  🎯 ${meeting.subject}`);
+      log.debug(`     Início: ${meeting.start.dateTime}`);
+
+      const isOrganizer = isMeetingOrganizer(user, meeting);
+      const optedIn = wasMeetingOptedIn(user.id, meeting.id);
+
+      if (!isOrganizer && !optedIn) {
+        log.info('  Usuario nao e organizador e nao fez opt-in para esta reuniao; pulando envio.');
+        continue;
+      }
+
+      if (wasMeetingProcessed(user.id, meeting.id)) {
+        log.info('  Reuniao ja processada anteriormente; pulando para evitar email duplicado.');
+        continue;
+      }
+
+      const transcript = await getMeetingTranscriptForEvent(user, meeting);
+      const meetingId = transcript.meetingId || meeting.id;
+      if (wasMeetingProcessed(user.id, meetingId)) {
+        log.info('  Reuniao ja processada anteriormente; pulando para evitar email duplicado.');
+        continue;
+      }
+
+      // 3. Tentar pegar transcrição
+
+      if (transcript.found && transcript.content) {
+        // 4. Gerar resumo com GPT-4
+        const summary = await generateSummary(transcript.content, meeting.subject);
+
+        // 5. Enviar email
+        const meetingDate = new Date(meeting.start.dateTime + 'Z').toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+        });
+        const organizerName = meeting.organizer?.emailAddress?.name || user.displayName;
+
+        await sendMeetingSummary(user.mail, meeting.subject, meetingDate, organizerName, summary);
+        markMeetingProcessed(user.id, meetingId, {
+          subject: meeting.subject,
+          recipient: user.mail,
+          meetingStart: meeting.start.dateTime,
+          resolvedBy: transcript.resolvedBy,
+          transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
+        });
+        if (meetingId !== meeting.id) {
+          markMeetingProcessed(user.id, meeting.id, {
+            subject: meeting.subject,
+            recipient: user.mail,
+            meetingStart: meeting.start.dateTime,
+            transcriptMeetingId: meetingId,
+            resolvedBy: transcript.resolvedBy,
+            transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
+          });
+        }
+        totalProcessed++;
+        log.success(`  Resumo enviado para ${user.mail}!`);
+      } else {
+        log.warn('  ⏳ Transcrição não disponível (reunião não gravada ou ainda processando)');
+      }
+    }
+  }
+
+  console.log('\n' + '='.repeat(60));
+  console.log(`  🏁 Processamento concluído! ${totalProcessed} resumos enviados.`);
+  console.log('='.repeat(60) + '\n');
+}
+
+const targetEmails = process.argv.slice(2);
+
+processMeetings(targetEmails).catch((err) => {
+  log.error('Erro fatal:', err.message);
+  process.exit(1);
+});

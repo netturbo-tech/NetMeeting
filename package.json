@@ -1,0 +1,27 @@
+{
+  "name": "netmeet-bot",
+  "version": "1.0.0",
+  "description": "NetMeet Bot - Resumo automático de reuniões Teams via Graph API + OpenAI (sem Azure Bot Framework)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:pilot": "node src/index.js",
+    "start:user": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test:auth": "node src/test-auth.js",
+    "test:email": "node src/test-email.js",
+    "monitor": "node src/monitor.js",
+    "dashboard": "node src/dashboard.js",
+    "diagnose": "node src/diagnose.js",
+    "force-summary": "node src/force-summary.js"
+  },
+  "keywords": ["teams", "meetings", "summary", "openai", "graph-api"],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@azure/msal-node": "^2.16.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "nodemailer": "^6.9.0"
+  }
+}

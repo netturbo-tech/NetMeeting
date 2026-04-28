@@ -1,0 +1,9 @@
+node_modules/
+.env
+data/
+logs/
+*.log
+
+# Preserva estrutura de pastas no git
+!data/.gitkeep
+!logs/.gitkeep
