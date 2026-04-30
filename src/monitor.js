@@ -13,6 +13,7 @@ const {
 } = require('./graph');
 const { sendMeetingNotification, sendMeetingSummary } = require('./email');
 const { generateSummary } = require('./summarizer');
+const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
 const {
   wasMeetingProcessed,
   markMeetingProcessed,
@@ -115,13 +116,14 @@ async function processEndedMeetings(user) {
       continue;
     }
 
-    const transcript = await getMeetingTranscriptForEvent(user, meeting);
-    const meetingId = transcript.meetingId || meeting.id;
-
-    if (wasMeetingProcessed(user.id, meetingId)) {
-      log.info(`Resumo ja processado para ${meeting.subject}; pulando.`);
+    const waitStatus = getPostMeetingWaitStatus(meeting, config.monitor.postMeetingWaitMinutes);
+    if (!waitStatus.ready) {
+      log.info(`  [${user.mail}] "${meeting.subject}": aguardando ${waitStatus.remainingMinutes} min antes de buscar transcricao; liberado a partir de ${formatDateTimeBr(waitStatus.readyAt)}.`);
       continue;
     }
+
+    const transcript = await getMeetingTranscriptForEvent(user, meeting);
+    const transcriptMeetingId = transcript.meetingId || meeting.id;
 
     if (transcript.found && transcript.content) {
       try {
@@ -138,23 +140,16 @@ async function processEndedMeetings(user) {
           summary
         );
 
-        markMeetingProcessed(user.id, meetingId, {
+        markMeetingProcessed(user.id, meeting.id, {
           subject: meeting.subject,
           recipient: user.mail,
           meetingStart: meeting.start.dateTime,
+          transcriptMeetingId,
+          transcriptId: transcript.transcriptId,
+          transcriptCreatedDateTime: transcript.transcriptCreatedDateTime,
           resolvedBy: transcript.resolvedBy,
           transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
         });
-        if (meetingId !== meeting.id) {
-          markMeetingProcessed(user.id, meeting.id, {
-            subject: meeting.subject,
-            recipient: user.mail,
-            meetingStart: meeting.start.dateTime,
-            transcriptMeetingId: meetingId,
-            resolvedBy: transcript.resolvedBy,
-            transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
-          });
-        }
       } catch (err) {
         log.error(`Erro ao processar resumo: ${err.message}`);
       }

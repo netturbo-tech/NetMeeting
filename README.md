@@ -92,13 +92,14 @@ O monitor agora faz duas etapas:
 1. Antes da reuniao:
    envia email preventivo para usuarios em `PILOT_USERS` com reunioes Teams nos proximos 30 minutos.
 2. Depois da reuniao:
-   tenta buscar a transcricao, gerar o resumo e enviar email.
+   aguarda `POST_MEETING_WAIT_MINUTES` apos o fim agendado, tenta buscar a transcricao da ocorrencia atual, gera o resumo e envia email.
 
 Regra de envio do resumo:
 
 - o organizador recebe automaticamente;
 - participantes recebem somente se clicarem no link `Quero receber o resumo desta reuniao`;
 - participantes sem opt-in nao recebem resumo, mesmo estando no calendario.
+- reunioes recorrentes usam apenas transcricoes criadas apos o inicio daquela ocorrencia; se a transcricao de hoje ainda nao existir, o monitor tenta novamente depois.
 
 ### Dashboard
 
@@ -132,7 +133,7 @@ Resultado esperado:
 
 1. Antes da reuniao, o usuario recebe email pedindo para ativar gravacao/transcricao.
 2. Participantes que quiserem receber o resumo clicam no link de opt-in.
-3. Depois da reuniao, se a transcricao estiver pronta, o resumo e enviado para o organizador e para os participantes que fizeram opt-in.
+3. Depois da reuniao e da janela `POST_MEETING_WAIT_MINUTES`, se a transcricao estiver pronta, o resumo e enviado para o organizador e para os participantes que fizeram opt-in.
 4. Se a transcricao ainda nao estiver pronta, o monitor tenta novamente nas proximas checagens.
 
 ## Arquivos de Apoio

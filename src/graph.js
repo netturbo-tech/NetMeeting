@@ -6,6 +6,7 @@ const axios = require('axios');
 const { getGraphToken } = require('./auth');
 const { createLogger } = require('./logger');
 const { config } = require('./config');
+const { parseGraphDateTime } = require('./meeting-time');
 
 const log = createLogger(config.logLevel);
 
@@ -246,6 +247,28 @@ async function getTranscriptCandidateUsers(calendarUser, meeting) {
   return candidates;
 }
 
+function sortTranscriptsByCreatedDesc(transcripts) {
+  return [...transcripts].sort((a, b) => {
+    const aDate = parseGraphDateTime(a.createdDateTime) || new Date(0);
+    const bDate = parseGraphDateTime(b.createdDateTime) || new Date(0);
+    return bDate - aDate;
+  });
+}
+
+function selectTranscriptForOccurrence(transcripts, meetingStartTime = null) {
+  const sorted = sortTranscriptsByCreatedDesc(transcripts);
+  const startDate = parseGraphDateTime(meetingStartTime);
+
+  if (!startDate) {
+    return sorted[0] || null;
+  }
+
+  return sorted.find((transcript) => {
+    const createdAt = parseGraphDateTime(transcript.createdDateTime);
+    return createdAt && createdAt >= startDate;
+  }) || null;
+}
+
 /**
  * Tenta obter transcrição de uma reunião (API Beta)
  * @param {string} userId - ID do usuário
@@ -272,40 +295,22 @@ async function getMeetingTranscript(userId, meetingId, meetingStartTime = null) 
   const allTranscripts = transcriptRes.data.value;
   log.info(`  ${allTranscripts.length} transcricao(oes) encontrada(s) para este onlineMeeting.`);
 
-  // Para reuniões recorrentes, a mesma "sala" Teams acumula transcrições de
-  // ocorrências anteriores. Filtramos apenas as criadas APÓS o início desta
-  // ocorrência específica, e usamos a mais recente entre elas.
-  let transcript = null;
+  const startDate = parseGraphDateTime(meetingStartTime);
+  const transcript = selectTranscriptForOccurrence(allTranscripts, meetingStartTime);
 
-  if (meetingStartTime) {
-    const startDate = new Date(
-      meetingStartTime.endsWith('Z') ? meetingStartTime : meetingStartTime + 'Z'
-    );
-
-    const candidates = allTranscripts.filter((t) => {
-      const createdAt = t.createdDateTime ? new Date(t.createdDateTime) : null;
-      return createdAt && createdAt >= startDate;
-    });
-
-    if (candidates.length > 0) {
-      // Mais recente primeiro
-      candidates.sort((a, b) => new Date(b.createdDateTime) - new Date(a.createdDateTime));
-      transcript = candidates[0];
-      log.info(`  Usando transcricao de ${transcript.createdDateTime} (filtrada pelo horario de inicio da reuniao).`);
-    } else {
-      log.warn(`  Nenhuma transcricao encontrada apos ${startDate.toISOString()}. Usando a mais recente disponivel como fallback.`);
-    }
+  if (startDate && !transcript) {
+    log.warn(`  Nenhuma transcricao encontrada apos ${startDate.toISOString()}. Nao vou usar transcricao de ocorrencia anterior.`);
+    return { found: false, reason: 'NO_TRANSCRIPT_FOR_OCCURRENCE' };
   }
 
-  // Fallback: se não tem meetingStartTime ou o filtro não retornou nada,
-  // usa a mais recente da lista
   if (!transcript) {
-    allTranscripts.sort((a, b) => {
-      const aDate = a.createdDateTime ? new Date(a.createdDateTime) : new Date(0);
-      const bDate = b.createdDateTime ? new Date(b.createdDateTime) : new Date(0);
-      return bDate - aDate;
-    });
-    transcript = allTranscripts[0];
+    log.warn('  Nao encontrei transcricao valida para esta reuniao.');
+    return { found: false };
+  }
+
+  if (startDate) {
+    log.info(`  Usando transcricao de ${transcript.createdDateTime} (filtrada pelo horario de inicio da reuniao).`);
+  } else {
     log.info(`  Usando transcricao mais recente: ${transcript.createdDateTime || 'data desconhecida'}.`);
   }
 
@@ -322,7 +327,12 @@ async function getMeetingTranscript(userId, meetingId, meetingStartTime = null) 
     return { found: false };
   }
 
-  return { found: true, content: contentRes.data };
+  return {
+    found: true,
+    content: contentRes.data,
+    transcriptId: transcript.id,
+    transcriptCreatedDateTime: transcript.createdDateTime,
+  };
 }
 
 async function getMeetingTranscriptForEvent(calendarUser, meeting) {
@@ -372,7 +382,7 @@ async function getMeetingTranscriptForEvent(calendarUser, meeting) {
   }
 
   log.warn('  Nao encontrei transcricao via organizador/participante; tentando fallback do evento.');
-  const transcript = await getMeetingTranscript(calendarUser.id, fallbackMeetingId);
+  const transcript = await getMeetingTranscript(calendarUser.id, fallbackMeetingId, meetingStartTime);
   return {
     ...transcript,
     transcriptUser: calendarUser,
@@ -390,6 +400,7 @@ module.exports = {
   getActiveOrUpcomingTeamsMeetings,
   getRecentlyEndedMeetings,
   findOnlineMeetingByJoinUrl,
+  selectTranscriptForOccurrence,
   getMeetingTranscript,
   getMeetingTranscriptForEvent,
 };

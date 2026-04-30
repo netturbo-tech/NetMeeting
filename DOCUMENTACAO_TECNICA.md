@@ -1,7 +1,7 @@
 # DOCUMENTAÇÃO TÉCNICA - NETMEET BOT (Node.js)
 
-**Versão:** 1.3.0
-**Data:** 28/04/2026
+**Versão:** 1.4.0
+**Data:** 29/04/2026
 **Autor:** Equipe Netturbo
 **Status:** Piloto ativo — 9 usuários monitorados, PM2 configurado, Application Access Policy global
 
@@ -155,7 +155,7 @@ Carrega variáveis do `.env` e exporta objeto `config` com valores padrão.
 | `config.openai` | `apiKey`, `model` | modelo: `gpt-4o-mini` |
 | `config.email` | `host`, `port`, `user`, `pass`, `fromName` | `smtp.gmail.com:587` |
 | `config.server` | `port`, `dashboardUrl` | `3000`, `http://localhost:3000` |
-| `config.monitor` | `checkIntervalMinutes`, `activeMeetingLookBackMinutes`, `endedMeetingLookBackHours` | 5 min / 60 min / 8h |
+| `config.monitor` | `checkIntervalMinutes`, `postMeetingWaitMinutes`, `activeMeetingLookBackMinutes`, `endedMeetingLookBackHours` | 5 min / 60 min / 60 min / 8h |
 | `config.pilotUsers` | Lista de emails | Lê `PILOT_USERS` do .env |
 
 ---
@@ -204,7 +204,7 @@ Encapsula todas as chamadas à Microsoft Graph API.
 
 > ⚠️ **Reuniões recorrentes:** Sempre use `calendarView` (não `/calendar/events` com `$filter`) — o `calendarView` expande cada ocorrência da série individualmente.
 
-> ⚠️ **Transcrições de reuniões recorrentes:** Uma mesma "sala" Teams acumula transcrições de todas as ocorrências anteriores. `getMeetingTranscript` filtra pelo campo `createdDateTime >= meetingStartTime` e pega a ocorrência mais recente que atenda ao critério. Se nenhuma atender (ex.: transcrição ainda não gerada), usa a mais recente como fallback.
+> ⚠️ **Transcrições de reuniões recorrentes:** Uma mesma "sala" Teams acumula transcrições de todas as ocorrências anteriores. `getMeetingTranscript` filtra pelo campo `createdDateTime >= meetingStartTime` e pega a ocorrência mais recente que atenda ao critério. Se nenhuma atender (ex.: transcrição ainda não gerada), não usa transcrição anterior; o monitor tenta novamente nas próximas checagens.
 
 ---
 
@@ -367,6 +367,7 @@ Logs gravados em `logs/monitor.log`, `logs/monitor-error.log`, `logs/dashboard.l
 | `PORT` | `3000` | Porta do dashboard |
 | `DASHBOARD_URL` | `http://localhost:3000` | URL base para os links de opt-in nos emails |
 | `CHECK_INTERVAL_MINUTES` | `5` | Intervalo do monitor em minutos |
+| `POST_MEETING_WAIT_MINUTES` | `60` | Minutos de espera após o fim agendado antes de buscar transcrição e enviar resumo |
 | `ACTIVE_MEETING_LOOKBACK_MINUTES` | `60` | Minutos para trás ao buscar reuniões em andamento |
 | `ENDED_MEETING_LOOKBACK_HOURS` | `8` | Horas para trás ao buscar reuniões encerradas |
 | `PILOT_USERS` | — | Emails separados por vírgula/ponto-e-vírgula. Quando preenchido, só monitora esses usuários |
@@ -452,7 +453,7 @@ npm run test:auth
 | Email preventivo não chegou | Monitor não estava rodando antes da janela de 30 min | Usar `force-summary.js` para processar manualmente |
 | Resumo capturou só 2-3 pessoas | Transcrição truncada em 12k chars | Corrigido em v1.2.0 — parser VTT + limite 80k |
 | Botão do email dá erro de conexão | Dashboard não está rodando em `:3000` | `pm2 status` → subir dashboard |
-| Resumo da Daily é do dia anterior | Reunião recorrente — `getMeetingTranscript` pegava a transcrição mais antiga | Corrigido em v1.3.0 — filtro por `meetingStartTime` |
+| Resumo da Daily é do dia anterior | Reunião recorrente ou transcrição atual ainda não processada | Corrigido em v1.4.0 — sem fallback para ocorrência anterior e com espera `POST_MEETING_WAIT_MINUTES` |
 | `403 No application access policy found` | Teams policy não configurada para o usuário específico | Aplicar `Grant-CsApplicationAccessPolicy -PolicyName NetMeetBotPolicy -Global` |
 | `Transcrição não disponível` | Reunião não foi gravada / transcrição ainda processando | Ativar transcrição no Teams; aguardar 5-10 min |
 | `Falha de autenticação` | Client secret expirado | Gerar novo secret no Entra ID |
@@ -498,6 +499,17 @@ Grant-CsApplicationAccessPolicy -PolicyName NetMeetBotPolicy -Global
 
 ## 10. Histórico de Alterações
 
+### v1.4.0 — 29/04/2026
+
+**Problema identificado:** Em uma Daily TI recorrente, o monitor tentou processar a reunião logo após o fim agendado (10:03 para reunião 09:30-10:00), enquanto a reunião ainda estava em andamento e a transcrição atual não existia. O fallback pegou a transcrição de 28/04/2026. Além disso, o store marcava o `onlineMeeting.id`, que é compartilhado entre ocorrências recorrentes, podendo bloquear o envio correto da ocorrência seguinte.
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/monitor.js` / `src/index.js` | Passam a respeitar `POST_MEETING_WAIT_MINUTES` antes de buscar transcrição e enviar resumo. Também marcam processamento pela ocorrência do calendário (`meeting.id`) e apenas armazenam o `onlineMeeting.id` como metadado. |
+| `src/graph.js` | Remove fallback para transcrição anterior quando `meetingStartTime` é informado. Se não houver transcrição criada após o início da ocorrência atual, retorna pendente para tentar novamente depois. |
+| `src/diagnose.js` | Diagnóstico passa a validar transcrição usando o início da ocorrência atual. |
+| `src/meeting-time.js` / `tests/` | Adiciona helpers e testes para janela pós-reunião e seleção de transcrição recorrente. |
+
 ### v1.3.0 — 28/04/2026
 
 **Problema 1 identificado:** Reuniões recorrentes (ex.: Daily TI) compartilham a mesma "sala" Teams. O bot estava sempre pegando a primeira transcrição da lista, que era da ocorrência anterior (ontem), não da atual.
@@ -538,4 +550,4 @@ Criação do projeto. MVP completo com autenticação MSAL, Graph API, geração
 
 ---
 
-*Última atualização: 28/04/2026 — v1.3.0*
+*Última atualização: 29/04/2026 — v1.4.0*

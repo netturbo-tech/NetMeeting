@@ -114,7 +114,7 @@ async function run() {
       console.log(`   → Organizador do evento: ${ev.organizer?.emailAddress?.address}`);
     } else {
       console.log(`   ✅ onlineMeeting encontrado: ${onlineMeeting.id}`);
-      const transcript = await getMeetingTranscript(user.id, onlineMeeting.id);
+      const transcript = await getMeetingTranscript(user.id, onlineMeeting.id, ev.start?.dateTime);
       if (transcript.found && transcript.content) {
         console.log(`   ✅ TRANSCRIÇÃO DISPONÍVEL! (${transcript.content.length} chars)`);
       } else {

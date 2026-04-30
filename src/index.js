@@ -12,6 +12,7 @@ const {
 } = require('./graph');
 const { sendMeetingSummary } = require('./email');
 const { generateSummary } = require('./summarizer');
+const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
 const { wasMeetingProcessed, markMeetingProcessed, wasMeetingOptedIn } = require('./store');
 
 const log = createLogger(config.logLevel);
@@ -112,12 +113,14 @@ async function processMeetings(targetEmails) {
         continue;
       }
 
-      const transcript = await getMeetingTranscriptForEvent(user, meeting);
-      const meetingId = transcript.meetingId || meeting.id;
-      if (wasMeetingProcessed(user.id, meetingId)) {
-        log.info('  Reuniao ja processada anteriormente; pulando para evitar email duplicado.');
+      const waitStatus = getPostMeetingWaitStatus(meeting, config.monitor.postMeetingWaitMinutes);
+      if (!waitStatus.ready) {
+        log.info(`  Aguardando ${waitStatus.remainingMinutes} min antes de buscar transcricao; liberado a partir de ${formatDateTimeBr(waitStatus.readyAt)}.`);
         continue;
       }
+
+      const transcript = await getMeetingTranscriptForEvent(user, meeting);
+      const transcriptMeetingId = transcript.meetingId || meeting.id;
 
       // 3. Tentar pegar transcrição
 
@@ -132,23 +135,16 @@ async function processMeetings(targetEmails) {
         const organizerName = meeting.organizer?.emailAddress?.name || user.displayName;
 
         await sendMeetingSummary(user.mail, meeting.subject, meetingDate, organizerName, summary);
-        markMeetingProcessed(user.id, meetingId, {
+        markMeetingProcessed(user.id, meeting.id, {
           subject: meeting.subject,
           recipient: user.mail,
           meetingStart: meeting.start.dateTime,
+          transcriptMeetingId,
+          transcriptId: transcript.transcriptId,
+          transcriptCreatedDateTime: transcript.transcriptCreatedDateTime,
           resolvedBy: transcript.resolvedBy,
           transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
         });
-        if (meetingId !== meeting.id) {
-          markMeetingProcessed(user.id, meeting.id, {
-            subject: meeting.subject,
-            recipient: user.mail,
-            meetingStart: meeting.start.dateTime,
-            transcriptMeetingId: meetingId,
-            resolvedBy: transcript.resolvedBy,
-            transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
-          });
-        }
         totalProcessed++;
         log.success(`  Resumo enviado para ${user.mail}!`);
       } else {

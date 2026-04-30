@@ -13,7 +13,10 @@
     "monitor": "node src/monitor.js",
     "dashboard": "node src/dashboard.js",
     "diagnose": "node src/diagnose.js",
-    "force-summary": "node src/force-summary.js"
+    "force-summary": "node src/force-summary.js",
+    "lint": "node scripts/check-js-syntax.js",
+    "typecheck": "node scripts/check-js-syntax.js",
+    "test": "node tests/run-tests.js"
   },
   "keywords": ["teams", "meetings", "summary", "openai", "graph-api"],
   "license": "UNLICENSED",
