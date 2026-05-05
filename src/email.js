@@ -92,12 +92,19 @@ async function sendMeetingNotification(to, meeting, recipientUser = {}) {
 
 async function sendMeetingSummary(to, meetingTitle, meetingDate, organizerName, summary) {
   const summaryHtml = summary
-    .replace(/\n/g, '<br>')
-    .replace(/#{3}\s*(.*?)$/gm, '<h3 style="color: #0078d4; margin-top: 16px;">$1</h3>')
-    .replace(/#{2}\s*(.*?)$/gm, '<h2 style="color: #333;">$1</h2>')
-    .replace(/#{1}\s*(.*?)$/gm, '<h1 style="color: #333;">$1</h1>')
+    // Títulos markdown primeiro, antes de trocar \n por <br>
+    .replace(/^###\s+(.+)$/gm, '<h3 style="color: #0078d4; margin-top: 16px;">$1</h3>')
+    .replace(/^##\s+(.+)$/gm, '<h2 style="color: rgb(51,51,51); margin-top: 20px;">$1</h2>')
+    .replace(/^#\s+(.+)$/gm, '<h1 style="color: rgb(51,51,51); margin-top: 24px;">$1</h1>')
+
+    // Negrito markdown
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/- (.*?)(<br>|$)/g, '&bull; $1$2');
+
+    // Bullets markdown
+    .replace(/^- (.+)$/gm, '&bull; $1')
+
+    // Quebras de linha por último
+    .replace(/\n/g, '<br>');
 
   const html = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 700px; margin: 0 auto; background: #f8f9fa; padding: 20px; border-radius: 12px;">
