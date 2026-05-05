@@ -21,9 +21,9 @@ const config = {
     tenantId: process.env.AZURE_TENANT_ID || '',
   },
 
-  openai: {
-    apiKey: process.env.OPENAI_API_KEY || '',
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  gemini: {
+    apiKey: process.env.GOOGLE_API_KEY || '',
+    model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   },
 
   email: {
@@ -63,8 +63,8 @@ function validateConfig() {
   }
   if (!config.azure.tenantId) errors.push('AZURE_TENANT_ID não configurado');
 
-  if (!config.openai.apiKey || config.openai.apiKey.startsWith('sk-sua-')) {
-    errors.push('OPENAI_API_KEY não configurado (edite o .env)');
+  if (!config.gemini.apiKey) {
+    errors.push('GOOGLE_API_KEY não configurado (edite o .env)');
   }
 
   if (!config.email.user) errors.push('SMTP_USER não configurado');

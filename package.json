@@ -18,10 +18,17 @@
     "typecheck": "node scripts/check-js-syntax.js",
     "test": "node tests/run-tests.js"
   },
-  "keywords": ["teams", "meetings", "summary", "openai", "graph-api"],
+  "keywords": [
+    "teams",
+    "meetings",
+    "summary",
+    "openai",
+    "graph-api"
+  ],
   "license": "UNLICENSED",
   "dependencies": {
     "@azure/msal-node": "^2.16.0",
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",

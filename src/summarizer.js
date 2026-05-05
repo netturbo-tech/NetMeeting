@@ -1,10 +1,11 @@
 /**
- * summarizer.js - Geração de resumos com OpenAI
+ * summarizer.js - Geração de resumos com Google Gemini
  *
  * O formato de transcrição do Teams é WebVTT (.vtt).
  * Antes de enviar para a IA, convertemos o VTT em texto limpo no formato
  * "Speaker: fala" para reduzir tokens e melhorar a qualidade do resumo.
  */
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const { config } = require('./config');
 const { createLogger } = require('./logger');
@@ -12,7 +13,7 @@ const { createLogger } = require('./logger');
 const log = createLogger(config.logLevel);
 
 // Limite de caracteres do texto limpo enviado para a IA.
-// gpt-4o-mini suporta ~128k tokens; 80k chars ≈ 20k tokens — margem segura.
+// gemini-2.0-flash suporta 1M tokens; 80k chars ≈ 20k tokens — margem segura.
 const MAX_TRANSCRIPT_CHARS = 80000;
 
 /**
@@ -114,32 +115,39 @@ Formate em Markdown. Seja objetivo e direto.`;
 
   try {
     log.info('Gerando resumo com IA...');
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.gemini.model}:generateContent?key=${config.gemini.apiKey}`;
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
+      endpoint,
       {
-        model: config.openai.model,
-        messages: [
+        systemInstruction: {
+          parts: [
+            {
+              text:
+                'Você é um assistente de reuniões profissional da empresa Net Turbo. ' +
+                'Seu objetivo é extrair o máximo de informação útil da transcrição, ' +
+                'identificando todos os participantes e suas contribuições.',
+            },
+          ],
+        },
+        contents: [
           {
-            role: 'system',
-            content:
-              'Você é um assistente de reuniões profissional da empresa Net Turbo. ' +
-              'Seu objetivo é extrair o máximo de informação útil da transcrição, ' +
-              'identificando todos os participantes e suas contribuições.',
+            role: 'user',
+            parts: [{ text: prompt }],
           },
-          { role: 'user', content: prompt },
         ],
-        temperature: 0.2,
-        max_tokens: 3000,
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 3000,
+        },
       },
       {
         headers: {
-          Authorization: `Bearer ${config.openai.apiKey}`,
           'Content-Type': 'application/json',
         },
       }
     );
     log.success('Resumo gerado!');
-    return response.data.choices[0].message.content;
+    return response.data.candidates[0].content.parts[0].text;
   } catch (error) {
     log.error('Erro ao gerar resumo:', error.response?.data?.error?.message || error.message);
     throw new Error(`Falha na geração do resumo: ${error.message}`);
