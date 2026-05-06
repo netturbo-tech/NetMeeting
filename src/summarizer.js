@@ -97,6 +97,12 @@ function wrapAiError(error, provider) {
   return wrapped;
 }
 
+function summarizeProviderErrors(errors) {
+  return errors
+    .map((error) => `${error.provider || 'ia'}${error.status ? ` ${error.status}` : ''}: ${error.message}`)
+    .join(' | ');
+}
+
 async function generateSummaryWithGemini(prompt) {
   if (!config.gemini.apiKey) {
     throw Object.assign(new Error('GOOGLE_API_KEY nao configurado'), {
@@ -282,7 +288,6 @@ async function generateSummary(rawTranscript, meetingTitle) {
       return await generateSummaryWithNvidia(prompt);
     } catch (error) {
       errors.push(error);
-      if (!error.isQuotaError && !error.isConfigError) throw error;
       log.warn('Fallback para Gemini apos falha da NVIDIA.');
     }
   }
@@ -292,7 +297,6 @@ async function generateSummary(rawTranscript, meetingTitle) {
       return await generateSummaryWithGemini(prompt);
     } catch (error) {
       errors.push(error);
-      if (!error.isQuotaError && !error.isConfigError) throw error;
       log.warn('Fallback para Groq apos falha do Gemini.');
     }
   }
@@ -302,16 +306,23 @@ async function generateSummary(rawTranscript, meetingTitle) {
       return await generateSummaryWithGroq(prompt);
     } catch (error) {
       errors.push(error);
-      if (!error.isQuotaError && !error.isConfigError) throw error;
       log.warn('Fallback para OpenRouter apos falha do Groq.');
     }
   }
 
   if (config.openrouter.apiKey) {
-    return generateSummaryWithOpenRouter(prompt);
+    try {
+      return await generateSummaryWithOpenRouter(prompt);
+    } catch (error) {
+      errors.push(error);
+    }
   }
 
-  throw errors[0] || new Error('Nenhum provedor de IA configurado para resumo');
+  if (errors.length > 0) {
+    throw new Error(`Todos os provedores de IA falharam: ${summarizeProviderErrors(errors)}`);
+  }
+
+  throw new Error('Nenhum provedor de IA configurado para resumo');
 }
 
 module.exports = { generateSummary };
