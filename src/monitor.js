@@ -20,9 +20,24 @@ const {
   wasMeetingNotified,
   markMeetingNotified,
   wasMeetingOptedIn,
+  markMeetingFailed,
+  getFailureCooldownStatus,
 } = require('./store');
 
 const log = createLogger(config.logLevel);
+
+function getSummaryRetryAfter() {
+  const minutes = Math.max(15, config.monitor.summaryFailureCooldownMinutes || 240);
+  return new Date(Date.now() + minutes * 60 * 1000);
+}
+
+function shouldCooldownSummaryFailure(error) {
+  return Boolean(
+    error?.isQuotaError ||
+    error?.status === 429 ||
+    /quota|free_tier|rate-limit|rate limit|status code 429/i.test(error?.message || '')
+  );
+}
 
 function normalizeEmailList(targetEmails) {
   return [...new Set(
@@ -116,6 +131,12 @@ async function processEndedMeetings(user) {
       continue;
     }
 
+    const cooldown = getFailureCooldownStatus(user.id, meeting.id);
+    if (cooldown.active) {
+      log.info(`  [${user.mail}] "${meeting.subject}": resumo em cooldown por falha de IA; nova tentativa em ${cooldown.remainingMinutes} min.`);
+      continue;
+    }
+
     const waitStatus = getPostMeetingWaitStatus(meeting, config.monitor.postMeetingWaitMinutes);
     if (!waitStatus.ready) {
       log.info(`  [${user.mail}] "${meeting.subject}": aguardando ${waitStatus.remainingMinutes} min antes de buscar transcricao; liberado a partir de ${formatDateTimeBr(waitStatus.readyAt)}.`);
@@ -152,6 +173,19 @@ async function processEndedMeetings(user) {
         });
       } catch (err) {
         log.error(`Erro ao processar resumo: ${err.message}`);
+        if (shouldCooldownSummaryFailure(err)) {
+          const retryAfter = getSummaryRetryAfter();
+          markMeetingFailed(user.id, meeting.id, {
+            subject: meeting.subject,
+            recipient: user.mail,
+            meetingStart: meeting.start.dateTime,
+            provider: err.provider || 'gemini',
+            reason: 'summary_quota_or_rate_limit',
+            error: err.message,
+            retryAfter: retryAfter.toISOString(),
+          });
+          log.warn(`  [${user.mail}] "${meeting.subject}": Gemini sem cota/limitado. Vou tentar novamente apos ${formatDateTimeBr(retryAfter)}.`);
+        }
       }
       continue;
     }

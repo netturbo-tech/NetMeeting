@@ -26,6 +26,11 @@ const config = {
     model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   },
 
+  groq: {
+    apiKey: process.env.GROQ_API_KEY || '',
+    model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  },
+
   email: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
@@ -44,6 +49,7 @@ const config = {
     postMeetingWaitMinutes: parseInt(process.env.POST_MEETING_WAIT_MINUTES || '60', 10),
     activeMeetingLookBackMinutes: parseInt(process.env.ACTIVE_MEETING_LOOKBACK_MINUTES || '60', 10),
     endedMeetingLookBackHours: parseInt(process.env.ENDED_MEETING_LOOKBACK_HOURS || '8', 10),
+    summaryFailureCooldownMinutes: parseInt(process.env.SUMMARY_FAILURE_COOLDOWN_MINUTES || '240', 10),
   },
 
   pilotUsers: parseEmailList(process.env.PILOT_USERS),
@@ -63,8 +69,8 @@ function validateConfig() {
   }
   if (!config.azure.tenantId) errors.push('AZURE_TENANT_ID não configurado');
 
-  if (!config.gemini.apiKey) {
-    errors.push('GOOGLE_API_KEY não configurado (edite o .env)');
+  if (!config.gemini.apiKey && !config.groq.apiKey) {
+    errors.push('Configure GOOGLE_API_KEY ou GROQ_API_KEY no .env');
   }
 
   if (!config.email.user) errors.push('SMTP_USER não configurado');

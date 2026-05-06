@@ -13,9 +13,28 @@ const {
 const { sendMeetingSummary } = require('./email');
 const { generateSummary } = require('./summarizer');
 const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
-const { wasMeetingProcessed, markMeetingProcessed, wasMeetingOptedIn } = require('./store');
+const {
+  wasMeetingProcessed,
+  markMeetingProcessed,
+  wasMeetingOptedIn,
+  markMeetingFailed,
+  getFailureCooldownStatus,
+} = require('./store');
 
 const log = createLogger(config.logLevel);
+
+function getSummaryRetryAfter() {
+  const minutes = Math.max(15, config.monitor.summaryFailureCooldownMinutes || 240);
+  return new Date(Date.now() + minutes * 60 * 1000);
+}
+
+function shouldCooldownSummaryFailure(error) {
+  return Boolean(
+    error?.isQuotaError ||
+    error?.status === 429 ||
+    /quota|free_tier|rate-limit|rate limit|status code 429/i.test(error?.message || '')
+  );
+}
 
 function normalizeEmailList(targetEmails) {
   return [...new Set(
@@ -113,6 +132,12 @@ async function processMeetings(targetEmails) {
         continue;
       }
 
+      const cooldown = getFailureCooldownStatus(user.id, meeting.id);
+      if (cooldown.active) {
+        log.info(`  Resumo em cooldown por falha de IA; nova tentativa em ${cooldown.remainingMinutes} min.`);
+        continue;
+      }
+
       const waitStatus = getPostMeetingWaitStatus(meeting, config.monitor.postMeetingWaitMinutes);
       if (!waitStatus.ready) {
         log.info(`  Aguardando ${waitStatus.remainingMinutes} min antes de buscar transcricao; liberado a partir de ${formatDateTimeBr(waitStatus.readyAt)}.`);
@@ -126,7 +151,26 @@ async function processMeetings(targetEmails) {
 
       if (transcript.found && transcript.content) {
         // 4. Gerar resumo com GPT-4
-        const summary = await generateSummary(transcript.content, meeting.subject);
+        let summary;
+        try {
+          summary = await generateSummary(transcript.content, meeting.subject);
+        } catch (err) {
+          if (shouldCooldownSummaryFailure(err)) {
+            const retryAfter = getSummaryRetryAfter();
+            markMeetingFailed(user.id, meeting.id, {
+              subject: meeting.subject,
+              recipient: user.mail,
+              meetingStart: meeting.start.dateTime,
+              provider: err.provider || 'gemini',
+              reason: 'summary_quota_or_rate_limit',
+              error: err.message,
+              retryAfter: retryAfter.toISOString(),
+            });
+            log.warn(`  Gemini sem cota/limitado. Vou tentar novamente apos ${formatDateTimeBr(retryAfter)}.`);
+            continue;
+          }
+          throw err;
+        }
 
         // 5. Enviar email
         const meetingDate = new Date(meeting.start.dateTime + 'Z').toLocaleString('pt-BR', {

@@ -116,6 +116,9 @@ async function run() {
       summary = await generateSummary(transcript.content, meeting.subject);
     } catch (err) {
       console.log(`   ❌ Erro ao gerar resumo: ${err.message}\n`);
+      if (err.isQuotaError || err.status === 429) {
+        console.log('   → A chave/projeto do Gemini esta sem cota disponivel. Troque GOOGLE_API_KEY, habilite billing ou aguarde a cota voltar.\n');
+      }
       continue;
     }
 
