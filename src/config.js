@@ -26,6 +26,11 @@ const config = {
     model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   },
 
+  nvidia: {
+    apiKey: process.env.NVIDIA_API_KEY || '',
+    model: process.env.NVIDIA_MODEL || 'nvidia/llama-3.1-nemotron-ultra-253b-v1',
+  },
+
   groq: {
     apiKey: process.env.GROQ_API_KEY || '',
     model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
@@ -74,8 +79,8 @@ function validateConfig() {
   }
   if (!config.azure.tenantId) errors.push('AZURE_TENANT_ID não configurado');
 
-  if (!config.gemini.apiKey && !config.groq.apiKey && !config.openrouter.apiKey) {
-    errors.push('Configure GOOGLE_API_KEY, GROQ_API_KEY ou OPENROUTER_API_KEY no .env');
+  if (!config.nvidia.apiKey && !config.gemini.apiKey && !config.groq.apiKey && !config.openrouter.apiKey) {
+    errors.push('Configure NVIDIA_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY ou OPENROUTER_API_KEY no .env');
   }
 
   if (!config.email.user) errors.push('SMTP_USER não configurado');

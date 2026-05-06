@@ -142,6 +142,45 @@ async function generateSummaryWithGemini(prompt) {
   }
 }
 
+async function generateSummaryWithNvidia(prompt) {
+  if (!config.nvidia.apiKey) {
+    throw Object.assign(new Error('NVIDIA_API_KEY nao configurado'), {
+      provider: 'nvidia',
+      isConfigError: true,
+    });
+  }
+
+  log.info(`Gerando resumo com NVIDIA (${config.nvidia.model})...`);
+  try {
+    const response = await axios.post(
+      'https://integrate.api.nvidia.com/v1/chat/completions',
+      {
+        model: config.nvidia.model,
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 3000,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${config.nvidia.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    const text = response.data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('NVIDIA nao retornou conteudo no resumo');
+    log.success('Resumo gerado com NVIDIA!');
+    return text;
+  } catch (error) {
+    const wrapped = wrapAiError(error, 'nvidia');
+    log.error('Erro ao gerar resumo com NVIDIA:', wrapped.message);
+    throw wrapped;
+  }
+}
+
 async function generateSummaryWithGroq(prompt) {
   if (!config.groq.apiKey) {
     throw Object.assign(new Error('GROQ_API_KEY nao configurado'), {
@@ -237,6 +276,16 @@ async function generateSummary(rawTranscript, meetingTitle) {
 
   const prompt = buildSummaryPrompt(meetingTitle, truncated);
   const errors = [];
+
+  if (config.nvidia.apiKey) {
+    try {
+      return await generateSummaryWithNvidia(prompt);
+    } catch (error) {
+      errors.push(error);
+      if (!error.isQuotaError && !error.isConfigError) throw error;
+      log.warn('Fallback para Gemini apos falha da NVIDIA.');
+    }
+  }
 
   if (config.gemini.apiKey) {
     try {
