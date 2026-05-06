@@ -181,6 +181,47 @@ async function generateSummaryWithGroq(prompt) {
   }
 }
 
+async function generateSummaryWithOpenRouter(prompt) {
+  if (!config.openrouter.apiKey) {
+    throw Object.assign(new Error('OPENROUTER_API_KEY nao configurado'), {
+      provider: 'openrouter',
+      isConfigError: true,
+    });
+  }
+
+  log.info(`Gerando resumo com OpenRouter (${config.openrouter.model})...`);
+  try {
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: config.openrouter.model,
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 3000,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${config.openrouter.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': config.server.dashboardUrl || 'http://localhost:3000',
+          'X-Title': 'NetMeeting',
+        },
+      }
+    );
+    const text = response.data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenRouter nao retornou conteudo no resumo');
+    log.success('Resumo gerado com OpenRouter!');
+    return text;
+  } catch (error) {
+    const wrapped = wrapAiError(error, 'openrouter');
+    log.error('Erro ao gerar resumo com OpenRouter:', wrapped.message);
+    throw wrapped;
+  }
+}
+
 async function generateSummary(rawTranscript, meetingTitle) {
   const cleanTranscript = parseVttToText(rawTranscript);
   const truncated = cleanTranscript.substring(0, MAX_TRANSCRIPT_CHARS);
@@ -208,7 +249,17 @@ async function generateSummary(rawTranscript, meetingTitle) {
   }
 
   if (config.groq.apiKey) {
-    return generateSummaryWithGroq(prompt);
+    try {
+      return await generateSummaryWithGroq(prompt);
+    } catch (error) {
+      errors.push(error);
+      if (!error.isQuotaError && !error.isConfigError) throw error;
+      log.warn('Fallback para OpenRouter apos falha do Groq.');
+    }
+  }
+
+  if (config.openrouter.apiKey) {
+    return generateSummaryWithOpenRouter(prompt);
   }
 
   throw errors[0] || new Error('Nenhum provedor de IA configurado para resumo');

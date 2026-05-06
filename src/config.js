@@ -31,6 +31,11 @@ const config = {
     model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
   },
 
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || '',
+    model: process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+  },
+
   email: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
@@ -69,8 +74,8 @@ function validateConfig() {
   }
   if (!config.azure.tenantId) errors.push('AZURE_TENANT_ID não configurado');
 
-  if (!config.gemini.apiKey && !config.groq.apiKey) {
-    errors.push('Configure GOOGLE_API_KEY ou GROQ_API_KEY no .env');
+  if (!config.gemini.apiKey && !config.groq.apiKey && !config.openrouter.apiKey) {
+    errors.push('Configure GOOGLE_API_KEY, GROQ_API_KEY ou OPENROUTER_API_KEY no .env');
   }
 
   if (!config.email.user) errors.push('SMTP_USER não configurado');
