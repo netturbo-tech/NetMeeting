@@ -153,7 +153,7 @@ async function processMeetings(targetEmails) {
         // 4. Gerar resumo com GPT-4
         let summary;
         try {
-          summary = await generateSummary(transcript.content, meeting.subject);
+          summary = await generateSummary(transcript.content, meeting.subject, meeting);
         } catch (err) {
           if (shouldCooldownSummaryFailure(err)) {
             const retryAfter = getSummaryRetryAfter();

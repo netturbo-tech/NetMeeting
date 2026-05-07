@@ -113,7 +113,7 @@ async function run() {
 
     let summary;
     try {
-      summary = await generateSummary(transcript.content, meeting.subject);
+      summary = await generateSummary(transcript.content, meeting.subject, meeting);
     } catch (err) {
       console.log(`   ❌ Erro ao gerar resumo: ${err.message}\n`);
       if (err.isQuotaError || err.status === 429) {

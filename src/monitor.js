@@ -148,7 +148,7 @@ async function processEndedMeetings(user) {
 
     if (transcript.found && transcript.content) {
       try {
-        const summary = await generateSummary(transcript.content, meeting.subject);
+        const summary = await generateSummary(transcript.content, meeting.subject, meeting);
         const meetingDate = new Date(meeting.start.dateTime + 'Z').toLocaleString('pt-BR', {
           timeZone: 'America/Sao_Paulo',
         });
