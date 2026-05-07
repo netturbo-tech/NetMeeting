@@ -66,8 +66,8 @@ async function getUsersToMonitor() {
     return users;
   }
 
-  log.warn('Monitor sem PILOT_USERS configurado; usando todos os usuarios retornados pelo Graph.');
-  return listUsers();
+  log.error('PILOT_USERS nao configurado no .env. Configure ao menos um email para iniciar o monitor. Nenhum usuario sera processado.');
+  return [];
 }
 
 function isMeetingOrganizer(user, meeting) {

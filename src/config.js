@@ -58,7 +58,7 @@ const config = {
     checkIntervalMinutes: parseInt(process.env.CHECK_INTERVAL_MINUTES || '5', 10),
     postMeetingWaitMinutes: parseInt(process.env.POST_MEETING_WAIT_MINUTES || '60', 10),
     activeMeetingLookBackMinutes: parseInt(process.env.ACTIVE_MEETING_LOOKBACK_MINUTES || '60', 10),
-    endedMeetingLookBackHours: parseInt(process.env.ENDED_MEETING_LOOKBACK_HOURS || '8', 10),
+    endedMeetingLookBackHours: parseInt(process.env.ENDED_MEETING_LOOKBACK_HOURS || '12', 10),
     summaryFailureCooldownMinutes: parseInt(process.env.SUMMARY_FAILURE_COOLDOWN_MINUTES || '240', 10),
   },
 

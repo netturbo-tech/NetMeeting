@@ -299,7 +299,15 @@ async function getMeetingTranscript(userId, meetingId, meetingStartTime = null) 
   const transcript = selectTranscriptForOccurrence(allTranscripts, meetingStartTime);
 
   if (startDate && !transcript) {
-    log.warn(`  Nenhuma transcricao encontrada apos ${startDate.toISOString()}. Nao vou usar transcricao de ocorrencia anterior.`);
+    const allDates = allTranscripts
+      .map((t) => t.createdDateTime)
+      .filter(Boolean)
+      .join(', ');
+    log.warn(
+      `  Nenhuma transcricao encontrada apos ${startDate.toISOString()} — nenhuma das ${allTranscripts.length} transcricao(oes) existentes pertence a esta ocorrencia.` +
+      (allDates ? ` Datas disponiveis: ${allDates}` : '')
+    );
+    log.warn('  Protecao ativa: recusando usar transcricao de ocorrencia anterior para nao enviar resumo errado.');
     return { found: false, reason: 'NO_TRANSCRIPT_FOR_OCCURRENCE' };
   }
 
@@ -309,7 +317,7 @@ async function getMeetingTranscript(userId, meetingId, meetingStartTime = null) 
   }
 
   if (startDate) {
-    log.info(`  Usando transcricao de ${transcript.createdDateTime} (filtrada pelo horario de inicio da reuniao).`);
+    log.info(`  Transcricao correta encontrada: criada em ${transcript.createdDateTime} (ocorrencia iniciada em ${startDate.toISOString()}) ✓`);
   } else {
     log.info(`  Usando transcricao mais recente: ${transcript.createdDateTime || 'data desconhecida'}.`);
   }
@@ -337,8 +345,24 @@ async function getMeetingTranscript(userId, meetingId, meetingStartTime = null) 
 
 async function getMeetingTranscriptForEvent(calendarUser, meeting) {
   const joinUrl = meeting.onlineMeeting?.joinUrl;
-  const fallbackMeetingId = meeting.onlineMeeting?.joinMeetingIdSettings?.joinMeetingId || meeting.id;
+  // Usa somente joinMeetingId quando disponivel — meeting.id e ID de evento de calendario
+  // e rejeitado pela Graph API com "Meeting Id is corrupted" / 400.
+  const fallbackMeetingId = meeting.onlineMeeting?.joinMeetingIdSettings?.joinMeetingId || null;
   const meetingStartTime = meeting.start?.dateTime;
+
+  // Para reunioes recorrentes (ex: Daily TI), o mesmo Teams room acumula transcricoes
+  // de todas as ocorrencias anteriores. Sem o horario de inicio nao e possivel
+  // garantir que a transcricao encontrada pertence a ocorrencia correta do dia.
+  if (!meetingStartTime) {
+    log.warn(`  "${meeting.subject}": sem horario de inicio definido. Nao e seguro buscar transcricao sem filtro de data — risco de retornar ocorrencia anterior. Pulando.`);
+    return { found: false, reason: 'NO_START_TIME' };
+  }
+
+  const occurrenceDate = new Date(meetingStartTime + 'Z').toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+  log.info(`  "${meeting.subject}": buscando transcricao da ocorrencia de ${occurrenceDate} (inicio UTC: ${meetingStartTime})`);
 
   if (!joinUrl) {
     log.warn('  Evento sem joinUrl do Teams; usando fallback do evento.');
@@ -381,7 +405,12 @@ async function getMeetingTranscriptForEvent(calendarUser, meeting) {
     }
   }
 
-  log.warn('  Nao encontrei transcricao via organizador/participante; tentando fallback do evento.');
+  if (!fallbackMeetingId) {
+    log.warn('  Nao encontrei transcricao via organizador/participante e nenhum meetingId alternativo disponivel.');
+    return { found: false, reason: 'NO_VALID_MEETING_ID' };
+  }
+
+  log.warn('  Nao encontrei transcricao via organizador/participante; tentando fallback com joinMeetingId.');
   const transcript = await getMeetingTranscript(calendarUser.id, fallbackMeetingId, meetingStartTime);
   return {
     ...transcript,
