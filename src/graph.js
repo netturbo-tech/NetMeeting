@@ -263,9 +263,15 @@ function selectTranscriptForOccurrence(transcripts, meetingStartTime = null) {
     return sorted[0] || null;
   }
 
+  // Aceita transcrições criadas até 10 minutos antes do início agendado.
+  // O Teams às vezes registra o timestamp da transcrição alguns minutos antes
+  // do horário marcado, especialmente quando a reunião começa adiantada.
+  const EARLY_START_BUFFER_MS = 10 * 60 * 1000;
+  const earliestAccepted = new Date(startDate.getTime() - EARLY_START_BUFFER_MS);
+
   return sorted.find((transcript) => {
     const createdAt = parseGraphDateTime(transcript.createdDateTime);
-    return createdAt && createdAt >= startDate;
+    return createdAt && createdAt >= earliestAccepted;
   }) || null;
 }
 

@@ -118,3 +118,7 @@ DASHBOARD_URL
 
 Por isso, se ela ficar como `http://localhost:3000`, os usuarios nao vao conseguir acessar a dashboard a partir das maquinas deles.
 No servidor, usar o IP ou nome DNS acessivel na rede.
+
+
+
+***** coloquei a api do google para testar , dentro do .env *******
