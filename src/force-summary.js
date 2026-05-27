@@ -17,6 +17,7 @@ const { config, validateConfig } = require('./config');
 const { findUserByEmail, getUserEvents, findOnlineMeetingByJoinUrl, getMeetingTranscript } = require('./graph');
 const { generateSummary } = require('./summarizer');
 const { sendMeetingSummary } = require('./email');
+const { sendToHub } = require('./hub');
 
 const targetEmail = process.argv[2] || config.pilotUsers[0];
 const horasAtras  = parseInt(process.argv[3] || '10', 10);
@@ -129,10 +130,22 @@ async function run() {
 
     try {
       await sendMeetingSummary(user.mail, meeting.subject, meetingDate, organizer, summary);
-      console.log(`   ✅ Resumo enviado para ${user.mail}!\n`);
+      console.log(`   ✅ Resumo enviado para ${user.mail}!`);
     } catch (err) {
       console.log(`   ❌ Erro ao enviar email: ${err.message}\n`);
     }
+
+    await sendToHub({
+      externalId: meeting.id,
+      title: meeting.subject,
+      meetingDate: meeting.start.dateTime,
+      organizerEmail: meeting.organizer?.emailAddress?.address || user.mail,
+      organizerName: organizer,
+      meetingLink: meeting.onlineMeeting?.joinUrl || '',
+      summary,
+      recipientEmail: user.mail,
+      provider: 'force-summary',
+    });
   }
 
   console.log(hr('='));
