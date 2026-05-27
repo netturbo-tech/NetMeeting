@@ -12,7 +12,7 @@ const { createLogger } = require('./logger');
 const log = createLogger(config.logLevel);
 
 // Limite de caracteres do texto limpo enviado para a IA.
-const MAX_TRANSCRIPT_CHARS = 80000;
+const MAX_TRANSCRIPT_CHARS = 120000;
 
 const SYSTEM_INSTRUCTION =
   'Voce e um assistente de reunioes profissional da empresa Net Turbo. ' +
@@ -123,7 +123,7 @@ function buildSummaryPrompt(meetingTitle, transcriptText, participants = []) {
     ? participants.map((participant) => `- ${participant.name}${participant.role === 'organizador' ? ' (organizador)' : ''}`).join('\n')
     : '- Participantes nao informados nos metadados da reuniao.';
 
-  return `Voce e um assistente executivo da empresa Net Turbo. Analise a transcricao completa abaixo e gere um resumo profissional em portugues do Brasil.
+  return `Voce e um assistente executivo da empresa Net Turbo. Analise a transcricao COMPLETA abaixo e gere um resumo profissional e detalhado em portugues do Brasil.
 
 REUNIAO: ${meetingTitle}
 
@@ -140,25 +140,29 @@ Regras obrigatorias:
 - Nao crie secao "Participantes" na sua resposta.
 - Nao adicione como participante nenhum nome apenas citado na transcricao.
 - Use nomes citados na transcricao apenas no contexto do assunto, decisao ou tarefa, quando isso estiver claro.
+- Seja detalhado: uma reuniao de 30 minutos deve gerar um resumo robusto, nao apenas topicos superficiais.
 
 Com base na transcricao COMPLETA acima, gere somente as secoes abaixo:
 
 ## Resumo Executivo
-3-4 paragrafos descrevendo o objetivo e o que foi discutido.
+5-7 paragrafos cobrindo: objetivo da reuniao, contexto, principais assuntos discutidos por cada area/pessoa, conclusoes gerais e clima da reuniao. Seja especifico — cite projetos, sistemas e nomes mencionados.
+
+## Topicos Discutidos
+Liste cada topico ou projeto abordado na reuniao com 2-3 linhas de descricao do que foi dito sobre ele.
 
 ## Decisoes Tomadas
-Liste cada decisao com quem decidiu (quando identificavel).
+Liste cada decisao com quem decidiu (quando identificavel) e o contexto da decisao.
 
 ## Action Items
-Liste cada tarefa com responsavel e prazo (quando mencionado).
+Liste cada tarefa com responsavel, descricao detalhada e prazo (quando mencionado). Se o responsavel nao foi definido, indique "A definir".
 
 ## Proximos Passos
-O que foi combinado para as proximas reunioes ou acoes futuras.
+O que foi combinado para as proximas reunioes, entregas ou acoes futuras com datas quando mencionadas.
 
 ## Pontos de Atencao
-Duvidas, riscos ou pendencias que ficaram em aberto.
+Duvidas abertas, riscos, dependencias, bloqueios ou pendencias que precisam de acompanhamento.
 
-Formate em Markdown. Seja objetivo e direto.`;
+Formate em Markdown. Seja rico em detalhes — o leitor nao assistiu a reuniao e precisa entender tudo que aconteceu.`;
 }
 
 function wrapAiError(error, provider) {
@@ -203,7 +207,7 @@ async function generateSummaryWithGemini(prompt) {
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 3000,
+          maxOutputTokens: 6000,
         },
       },
       {
@@ -242,7 +246,7 @@ async function generateSummaryWithNvidia(prompt) {
           { role: 'user', content: prompt },
         ],
         temperature: 0.2,
-        max_tokens: 3000,
+        max_tokens: 6000,
       },
       {
         headers: {
@@ -281,7 +285,7 @@ async function generateSummaryWithGroq(prompt) {
           { role: 'user', content: prompt },
         ],
         temperature: 0.2,
-        max_tokens: 3000,
+        max_tokens: 6000,
       },
       {
         headers: {
@@ -320,7 +324,7 @@ async function generateSummaryWithOpenRouter(prompt) {
           { role: 'user', content: prompt },
         ],
         temperature: 0.2,
-        max_tokens: 3000,
+        max_tokens: 6000,
       },
       {
         headers: {
