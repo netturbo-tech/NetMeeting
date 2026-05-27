@@ -64,6 +64,11 @@ const config = {
 
   pilotUsers: parseEmailList(process.env.PILOT_USERS),
 
+  hub: {
+    apiUrl: process.env.HUB_API_URL || '',
+    apiKey: process.env.HUB_API_KEY || '',
+  },
+
   logLevel: process.env.LOG_LEVEL || 'info',
 };
 

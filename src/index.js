@@ -12,6 +12,7 @@ const {
 } = require('./graph');
 const { sendMeetingSummary } = require('./email');
 const { generateSummary } = require('./summarizer');
+const { sendToHub } = require('./hub');
 const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
 const {
   wasMeetingProcessed,
@@ -179,6 +180,19 @@ async function processMeetings(targetEmails) {
         const organizerName = meeting.organizer?.emailAddress?.name || user.displayName;
 
         await sendMeetingSummary(user.mail, meeting.subject, meetingDate, organizerName, summary);
+
+        await sendToHub({
+          externalId: meeting.id,
+          title: meeting.subject,
+          meetingDate: meeting.start.dateTime,
+          organizerEmail: meeting.organizer?.emailAddress?.address || user.mail,
+          organizerName,
+          meetingLink: meeting.onlineMeeting?.joinUrl || '',
+          summary,
+          recipientEmail: user.mail,
+          provider: summary._provider || 'teams-bot',
+        });
+
         markMeetingProcessed(user.id, meeting.id, {
           subject: meeting.subject,
           recipient: user.mail,
