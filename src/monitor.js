@@ -13,7 +13,7 @@ const {
 } = require('./graph');
 const { sendMeetingNotification, sendMeetingSummary } = require('./email');
 const { generateSummary } = require('./summarizer');
-const { sendToHub } = require('./hub');
+const { sendToHub, buildExternalId } = require('./hub');
 const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
 const {
   wasMeetingProcessed,
@@ -170,7 +170,15 @@ async function processEndedMeetings(user) {
         );
 
         const hubPayload = {
-          externalId: meeting.id,
+          // ID estável compartilhado entre todos os participantes da MESMA
+          // ocorrência → Hub deduplica (1 card, vários recipients). Antes era
+          // meeting.id (id do evento de calendário, diferente por participante)
+          // → gerava 1 card duplicado por usuário do piloto.
+          externalId: buildExternalId({
+            joinUrl: meeting.onlineMeeting?.joinUrl,
+            fallbackId: transcriptMeetingId,
+            startDateTime: meeting.start?.dateTime,
+          }),
           title: meeting.subject,
           meetingDate: meeting.start.dateTime,
           organizerEmail: meeting.organizer?.emailAddress?.address || user.mail,
