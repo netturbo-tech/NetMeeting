@@ -23,10 +23,11 @@ function readStore() {
       notifiedMeetings: parsed.notifiedMeetings || {},
       optedInMeetings: parsed.optedInMeetings || {},
       failedMeetings: parsed.failedMeetings || {},
+      hubPendingMeetings: parsed.hubPendingMeetings || {},
     };
   } catch (error) {
     log.warn(`Nao consegui ler o store local: ${error.message}`);
-    return { processedMeetings: {}, notifiedMeetings: {}, optedInMeetings: {}, failedMeetings: {} };
+    return { processedMeetings: {}, notifiedMeetings: {}, optedInMeetings: {}, failedMeetings: {}, hubPendingMeetings: {} };
   }
 }
 
@@ -145,6 +146,41 @@ function getFailureCooldownStatus(userId, meetingId, now = new Date()) {
   };
 }
 
+// --- Fila de reenvio ao Hub -------------------------------------------------
+// Reuniões cujo email já foi enviado mas o POST ao Hub falhou (ex.: Hub em
+// restart). Guardamos o payload completo para reenviar SÓ ao Hub na próxima
+// checagem, sem regerar resumo nem reenviar email.
+
+function getHubPending() {
+  const store = readStore();
+  return store.hubPendingMeetings || {};
+}
+
+function markHubPending(userId, meetingId, details = {}) {
+  const store = readStore();
+  store.hubPendingMeetings = store.hubPendingMeetings || {};
+  const key = buildMeetingKey(userId, meetingId);
+  const previous = store.hubPendingMeetings[key] || {};
+  store.hubPendingMeetings[key] = {
+    ...previous,
+    ...details,
+    userId,
+    meetingId,
+    attempts: Number(previous.attempts || 0) + 1,
+    lastTriedAt: new Date().toISOString(),
+  };
+  writeStore(store);
+  return store.hubPendingMeetings[key].attempts;
+}
+
+function clearHubPending(userId, meetingId) {
+  const store = readStore();
+  if (store.hubPendingMeetings) {
+    delete store.hubPendingMeetings[buildMeetingKey(userId, meetingId)];
+    writeStore(store);
+  }
+}
+
 module.exports = {
   wasMeetingProcessed,
   markMeetingProcessed,
@@ -155,4 +191,7 @@ module.exports = {
   getMeetingFailure,
   markMeetingFailed,
   getFailureCooldownStatus,
+  getHubPending,
+  markHubPending,
+  clearHubPending,
 };

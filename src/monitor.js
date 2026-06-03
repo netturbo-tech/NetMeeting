@@ -13,6 +13,7 @@ const {
 } = require('./graph');
 const { sendMeetingNotification, sendMeetingSummary } = require('./email');
 const { generateSummary } = require('./summarizer');
+const { sendToHub } = require('./hub');
 const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
 const {
   wasMeetingProcessed,
@@ -22,9 +23,16 @@ const {
   wasMeetingOptedIn,
   markMeetingFailed,
   getFailureCooldownStatus,
+  getHubPending,
+  markHubPending,
+  clearHubPending,
 } = require('./store');
 
 const log = createLogger(config.logLevel);
+
+// Máximo de tentativas de reenvio ao Hub antes de desistir (checagem a cada
+// ~5 min → ~1h de janela de retry para falhas transitórias do Hub).
+const MAX_HUB_RETRIES = 12;
 
 function getSummaryRetryAfter() {
   const minutes = Math.max(15, config.monitor.summaryFailureCooldownMinutes || 240);
@@ -161,6 +169,22 @@ async function processEndedMeetings(user) {
           summary
         );
 
+        const hubPayload = {
+          externalId: meeting.id,
+          title: meeting.subject,
+          meetingDate: meeting.start.dateTime,
+          organizerEmail: meeting.organizer?.emailAddress?.address || user.mail,
+          organizerName: meeting.organizer?.emailAddress?.name || user.displayName,
+          meetingLink: meeting.onlineMeeting?.joinUrl || '',
+          summary,
+          recipientEmail: user.mail,
+          provider: summary._provider || 'teams-bot',
+        };
+        const hubResult = await sendToHub(hubPayload);
+
+        // Email já foi enviado: marcamos como processado para NUNCA reenviar
+        // email (idempotência). Se o Hub falhou, registramos o estado e
+        // enfileiramos um retry só-do-Hub para a próxima checagem.
         markMeetingProcessed(user.id, meeting.id, {
           subject: meeting.subject,
           recipient: user.mail,
@@ -170,7 +194,16 @@ async function processEndedMeetings(user) {
           transcriptCreatedDateTime: transcript.transcriptCreatedDateTime,
           resolvedBy: transcript.resolvedBy,
           transcriptUser: transcript.transcriptUser?.mail || transcript.transcriptUser?.userPrincipalName,
+          hubSent: hubResult.ok,
         });
+
+        if (!hubResult.ok && !hubResult.skipped) {
+          markHubPending(user.id, meeting.id, {
+            subject: meeting.subject,
+            recipient: user.mail,
+            payload: hubPayload,
+          });
+        }
       } catch (err) {
         log.error(`Erro ao processar resumo: ${err.message}`);
         if (shouldCooldownSummaryFailure(err)) {
@@ -199,8 +232,52 @@ async function processEndedMeetings(user) {
   }
 }
 
+// Reenvia ao Hub os resumos cujo email já saiu mas o POST ao Hub falhou antes
+// (ex.: Hub em restart). Não regera resumo nem reenvia email — só o Hub.
+async function retryPendingHub() {
+  const pending = getHubPending();
+  const entries = Object.entries(pending);
+  if (entries.length === 0) return;
+
+  log.info(`Reenviando ${entries.length} resumo(s) pendente(s) ao Hub...`);
+
+  for (const [, item] of entries) {
+    if (!item.payload) {
+      // Entrada legada/corrompida sem payload: não há como reenviar.
+      clearHubPending(item.userId, item.meetingId);
+      continue;
+    }
+
+    const result = await sendToHub(item.payload);
+
+    if (result.ok) {
+      clearHubPending(item.userId, item.meetingId);
+      log.success(`  Pendencia do Hub resolvida: "${item.subject || item.meetingId}"`);
+      continue;
+    }
+
+    if (result.skipped) {
+      // Integração do Hub desligada agora; tentamos de novo quando voltar.
+      log.debug('  Hub desligado (sem URL/key); mantendo pendencias para depois.');
+      return;
+    }
+
+    const attempts = markHubPending(item.userId, item.meetingId, {
+      subject: item.subject,
+      recipient: item.recipient,
+      payload: item.payload,
+    });
+    if (attempts >= MAX_HUB_RETRIES) {
+      clearHubPending(item.userId, item.meetingId);
+      log.error(`  Desisti de enviar "${item.subject || item.meetingId}" ao Hub apos ${attempts} tentativas. Email ja havia sido enviado.`);
+    }
+  }
+}
+
 async function checkMeetings() {
   log.info('Checando reunioes...');
+
+  await retryPendingHub();
 
   const users = await getUsersToMonitor();
 
