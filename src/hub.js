@@ -4,29 +4,10 @@
  * Se HUB_API_URL ou HUB_API_KEY não estiverem configurados, apenas loga e segue.
  */
 const axios = require('axios');
-const crypto = require('crypto');
 const { config } = require('./config');
 const { createLogger } = require('./logger');
 
 const log = createLogger(config.logLevel);
-
-/**
- * Gera um external_id ESTÁVEL e compartilhado por todos os participantes da
- * mesma ocorrência de reunião — para o Hub deduplicar (1 card por reunião,
- * acumulando os destinatários) em vez de criar 1 card por participante.
- *
- * - `joinUrl` é idêntico no calendário de todos os participantes (invariante).
- * - `startDateTime` distingue ocorrências de uma série recorrente (ex.: Daily),
- *   já que o mesmo joinUrl/sala é reutilizado todos os dias.
- * - Hash SHA-1 para caber em varchar(255) e não expor a URL no banco.
- * - Sem joinUrl, cai no `fallbackId` (onlineMeeting id resolvido).
- */
-function buildExternalId({ joinUrl, fallbackId, startDateTime }) {
-  const base = joinUrl || fallbackId || '';
-  const seed = `${base}__${startDateTime || ''}`;
-  if (!base) return fallbackId || '';
-  return 'tms_' + crypto.createHash('sha1').update(seed).digest('hex');
-}
 
 /**
  * Envia o resumo ao Hub.
@@ -72,4 +53,4 @@ async function sendToHub({ externalId, title, meetingDate, organizerEmail, organ
   }
 }
 
-module.exports = { sendToHub, buildExternalId };
+module.exports = { sendToHub };

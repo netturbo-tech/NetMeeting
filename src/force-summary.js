@@ -17,7 +17,7 @@ const { config, validateConfig } = require('./config');
 const { findUserByEmail, getUserEvents, findOnlineMeetingByJoinUrl, getMeetingTranscript } = require('./graph');
 const { generateSummary } = require('./summarizer');
 const { sendMeetingSummary } = require('./email');
-const { sendToHub, buildExternalId } = require('./hub');
+const { sendToHub } = require('./hub');
 
 const targetEmail = process.argv[2] || config.pilotUsers[0];
 const horasAtras  = parseInt(process.argv[3] || '10', 10);
@@ -136,13 +136,7 @@ async function run() {
     }
 
     await sendToHub({
-      // Mesmo external_id estável do monitor → re-envio manual atualiza o
-      // card existente em vez de criar duplicata.
-      externalId: buildExternalId({
-        joinUrl: meeting.onlineMeeting?.joinUrl,
-        fallbackId: onlineMeeting?.id || meeting.id,
-        startDateTime: meeting.start?.dateTime,
-      }),
+      externalId: meeting.id,
       title: meeting.subject,
       meetingDate: meeting.start.dateTime,
       organizerEmail: meeting.organizer?.emailAddress?.address || user.mail,
