@@ -411,6 +411,7 @@ async function generateSummary(rawTranscript, meetingTitle, meeting = {}) {
 
 module.exports = {
   generateSummary,
+  parseVttToText,
   buildSummaryPrompt,
   extractMeetingParticipants,
   formatParticipantSection,

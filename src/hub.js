@@ -16,7 +16,7 @@ const log = createLogger(config.logLevel);
  *   - { ok: true }       -> salvo no Hub com sucesso.
  *   - { ok: false }      -> falhou (deve ser reenfileirado para retry).
  */
-async function sendToHub({ externalId, title, meetingDate, organizerEmail, organizerName, meetingLink, summary, recipientEmail, provider }) {
+async function sendToHub({ externalId, title, meetingDate, organizerEmail, organizerName, meetingLink, summary, recipientEmail, provider, transcript, participants }) {
   if (!config.hub.apiUrl || !config.hub.apiKey) {
     log.debug('HUB_API_URL ou HUB_API_KEY nao configurados; pulando envio ao Hub.');
     return { ok: false, skipped: true };
@@ -32,15 +32,17 @@ async function sendToHub({ externalId, title, meetingDate, organizerEmail, organ
       organizerEmail,
       organizerName,
       meetingLink: meetingLink || '',
-      summary,
+      summary: summary || '',
       recipientEmail,
       provider: provider || 'teams-bot',
+      // Modo Hub: transcricao limpa ("Pessoa: fala") para o Hub gerar e guardar a ata.
+      ...(transcript ? { transcript, participants: participants || [] } : {}),
     }, {
       headers: {
         'Authorization': `Bearer ${config.hub.apiKey}`,
         'Content-Type': 'application/json',
       },
-      timeout: 10000,
+      timeout: transcript ? 30000 : 10000,
     });
 
     log.success(`  Resumo salvo no Hub para ${recipientEmail}`);
@@ -48,7 +50,7 @@ async function sendToHub({ externalId, title, meetingDate, organizerEmail, organ
   } catch (err) {
     const status = err.response?.status;
     const msg = err.response?.data?.error || err.message;
-    log.warn(`  Hub nao disponivel (${status || 'timeout'}): ${msg}. Email ja foi enviado; vou reenviar ao Hub na proxima checagem.`);
+    log.warn(`  Hub nao disponivel (${status || 'timeout'}): ${msg}. Vou reenviar ao Hub na proxima checagem.`);
     return { ok: false, skipped: false, status: status || 'timeout' };
   }
 }

@@ -69,6 +69,13 @@ const config = {
     apiKey: process.env.HUB_API_KEY || '',
   },
 
+  // DELIVERY_MODE=hub (Hub v2, 27/09/2026): sem e-mail e sem opt-in. Todo usuario monitorado
+  // recebe a ata das reunioes em que participou; o bot so coleta a transcricao e envia ao Hub,
+  // que gera a ata e avisa na propria tela. Padrao 'email' = comportamento antigo (bot do .238).
+  delivery: {
+    mode: String(process.env.DELIVERY_MODE || 'email').trim().toLowerCase() === 'hub' ? 'hub' : 'email',
+  },
+
   logLevel: process.env.LOG_LEVEL || 'info',
 };
 
@@ -83,6 +90,13 @@ function validateConfig() {
     errors.push('AZURE_CLIENT_SECRET não configurado (edite o .env)');
   }
   if (!config.azure.tenantId) errors.push('AZURE_TENANT_ID não configurado');
+
+  if (config.delivery.mode === 'hub') {
+    // Modo Hub: a IA e a entrega ficam no Hub. Sem SMTP e sem chave de IA aqui.
+    if (!config.hub.apiUrl) errors.push('HUB_API_URL não configurado (obrigatório com DELIVERY_MODE=hub)');
+    if (!config.hub.apiKey) errors.push('HUB_API_KEY não configurado (obrigatório com DELIVERY_MODE=hub)');
+    return errors;
+  }
 
   if (!config.nvidia.apiKey && !config.gemini.apiKey && !config.groq.apiKey && !config.openrouter.apiKey) {
     errors.push('Configure NVIDIA_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY ou OPENROUTER_API_KEY no .env');

@@ -12,7 +12,7 @@ const {
   getMeetingTranscriptForEvent,
 } = require('./graph');
 const { sendMeetingNotification, sendMeetingSummary } = require('./email');
-const { generateSummary } = require('./summarizer');
+const { generateSummary, parseVttToText, extractMeetingParticipants } = require('./summarizer');
 const { sendToHub } = require('./hub');
 const { getPostMeetingWaitStatus, formatDateTimeBr } = require('./meeting-time');
 const {
@@ -125,9 +125,11 @@ async function processEndedMeetings(user) {
     log.info(`  [${user.mail}] ${ended.length} reuniao(oes) encerrada(s) para verificar.`);
   }
 
+  const hubMode = config.delivery.mode === 'hub';
+
   for (const meeting of ended) {
     const isOrganizer = isMeetingOrganizer(user, meeting);
-    const optedIn = wasMeetingOptedIn(user.id, meeting.id);
+    const optedIn = hubMode || wasMeetingOptedIn(user.id, meeting.id);
 
     if (!isOrganizer && !optedIn) {
       log.info(`  [${user.mail}] "${meeting.subject}": participante sem opt-in. Para receber o resumo, clique no link do email preventivo.`);
@@ -153,6 +155,11 @@ async function processEndedMeetings(user) {
 
     const transcript = await getMeetingTranscriptForEvent(user, meeting);
     const transcriptMeetingId = transcript.meetingId || meeting.id;
+
+    if (transcript.found && transcript.content && hubMode) {
+      await deliverTranscriptToHub(user, meeting, transcript, transcriptMeetingId);
+      continue;
+    }
 
     if (transcript.found && transcript.content) {
       try {
@@ -232,6 +239,46 @@ async function processEndedMeetings(user) {
   }
 }
 
+// Modo Hub: envia a transcricao limpa; o Hub gera a ata. So marca como processada
+// quando o Hub confirmou — se falhar, a proxima checagem busca e reenvia (janela
+// ENDED_MEETING_LOOKBACK_HOURS), sem guardar transcricao no disco.
+async function deliverTranscriptToHub(user, meeting, transcript, transcriptMeetingId) {
+  const text = parseVttToText(transcript.content).trim();
+  if (!text) {
+    log.warn(`  [${user.mail}] "${meeting.subject}": transcricao vazia; nada a enviar.`);
+    return;
+  }
+  const participants = extractMeetingParticipants(meeting)
+    .map((p) => p.name || p.email)
+    .filter(Boolean);
+  const result = await sendToHub({
+    externalId: meeting.id,
+    title: meeting.subject,
+    meetingDate: meeting.start.dateTime,
+    organizerEmail: meeting.organizer?.emailAddress?.address || user.mail,
+    organizerName: meeting.organizer?.emailAddress?.name || user.displayName,
+    meetingLink: meeting.onlineMeeting?.joinUrl || '',
+    summary: '',
+    recipientEmail: user.mail,
+    provider: 'teams-transcript',
+    transcript: text,
+    participants,
+  });
+  if (!result.ok) return;
+  markMeetingProcessed(user.id, meeting.id, {
+    subject: meeting.subject,
+    recipient: user.mail,
+    meetingStart: meeting.start.dateTime,
+    transcriptMeetingId,
+    transcriptId: transcript.transcriptId,
+    transcriptCreatedDateTime: transcript.transcriptCreatedDateTime,
+    resolvedBy: transcript.resolvedBy,
+    delivery: 'hub',
+    transcriptChars: text.length,
+    hubSent: true,
+  });
+}
+
 // Reenvia ao Hub os resumos cujo email já saiu mas o POST ao Hub falhou antes
 // (ex.: Hub em restart). Não regera resumo nem reenvia email — só o Hub.
 async function retryPendingHub() {
@@ -284,7 +331,8 @@ async function checkMeetings() {
   for (const user of users) {
     if (!user.mail) continue;
 
-    await notifyUpcomingMeetings(user);
+    // Modo Hub: sem e-mail previo de opt-in (todos recebem automaticamente).
+    if (config.delivery.mode !== 'hub') await notifyUpcomingMeetings(user);
     await processEndedMeetings(user);
   }
 }
