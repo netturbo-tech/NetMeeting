@@ -1,5 +1,8 @@
 # NetMeet Bot - Resumo Automatico de Reunioes Teams
 
+> ⚠️ **27/09/2026: o robô ativo é o do Hub v2, no Hermes (`/opt/netmeet-bot-v2`, `DELIVERY_MODE=hub`, sem e-mail).**
+> O `netmeet-monitor` do `.238` está pausado. Operação atual: [OPERACAO-HUB-V2.md](OPERACAO-HUB-V2.md).
+
 > Sem Azure Bot Framework. Usa Entra ID + Microsoft Graph + OpenAI + SMTP.
 
 ## O Que Faz

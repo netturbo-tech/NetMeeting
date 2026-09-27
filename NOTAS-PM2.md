@@ -1,5 +1,8 @@
 # Notas PM2 — Servidor Linux
 
+> ⚠️ **27/09/2026: o robô ativo é o do Hub v2, no Hermes (`/opt/netmeet-bot-v2`, `DELIVERY_MODE=hub`, sem e-mail).**
+> O `netmeet-monitor` do `.238` está pausado. Operação atual: [OPERACAO-HUB-V2.md](OPERACAO-HUB-V2.md).
+
 ## Instalação
 
 ```bash
